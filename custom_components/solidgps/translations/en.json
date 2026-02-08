@@ -1,0 +1,39 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "SolidGPS Tracker",
+        "description": "Enter your SolidGPS device credentials. You can find these in your SolidGPS dashboard URL.",
+        "data": {
+          "imei": "Device IMEI",
+          "auth_code": "Auth Code",
+          "tracking_code": "Tracking Code",
+          "device_name": "Device Name (optional)"
+        },
+        "data_description": {
+          "imei": "The IMEI number of your SolidGPS tracker",
+          "auth_code": "Authentication code from your SolidGPS dashboard URL (auth_code parameter)",
+          "tracking_code": "Tracking code from your SolidGPS dashboard URL (tracking_code parameter)",
+          "device_name": "Custom name for this tracker. Defaults to 'SolidGPS' followed by last 4 digits of IMEI"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate SolidGPS",
+        "description": "Your SolidGPS credentials have expired. Please re-enter them.",
+        "data": {
+          "auth_code": "Auth Code",
+          "tracking_code": "Tracking Code"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid authentication credentials",
+      "cannot_connect": "Unable to connect to SolidGPS API",
+      "unknown": "An unexpected error occurred"
+    },
+    "abort": {
+      "already_configured": "This device is already configured",
+      "reauth_successful": "Re-authentication was successful"
+    }
+  }
+}
