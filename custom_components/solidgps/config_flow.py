@@ -6,16 +6,15 @@ import logging
 from typing import Any
 
 import voluptuous as vol
-
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import SolidGPSApiClient, SolidGPSApiError, SolidGPSAuthError
 from .const import (
+    CONF_ACCOUNT_ID,
     CONF_AUTH_CODE,
     CONF_DEVICE_NAME,
     CONF_IMEI,
-    CONF_TRACKING_CODE,
     DOMAIN,
 )
 
@@ -24,8 +23,8 @@ _LOGGER = logging.getLogger(__name__)
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_IMEI): str,
+        vol.Required(CONF_ACCOUNT_ID): str,
         vol.Required(CONF_AUTH_CODE): str,
-        vol.Required(CONF_TRACKING_CODE): str,
         vol.Optional(CONF_DEVICE_NAME, default=""): str,
     }
 )
@@ -33,7 +32,6 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
 STEP_REAUTH_DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_AUTH_CODE): str,
-        vol.Required(CONF_TRACKING_CODE): str,
     }
 )
 
@@ -43,9 +41,7 @@ class SolidGPSConfigFlow(ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
-    async def async_step_user(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
+    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Handle the initial step."""
         errors: dict[str, str] = {}
 
@@ -57,8 +53,8 @@ class SolidGPSConfigFlow(ConfigFlow, domain=DOMAIN):
             client = SolidGPSApiClient(
                 session=session,
                 imei=user_input[CONF_IMEI],
+                account_id=user_input[CONF_ACCOUNT_ID],
                 auth_code=user_input[CONF_AUTH_CODE],
-                tracking_code=user_input[CONF_TRACKING_CODE],
             )
 
             try:
@@ -79,8 +75,8 @@ class SolidGPSConfigFlow(ConfigFlow, domain=DOMAIN):
                     title=name,
                     data={
                         CONF_IMEI: user_input[CONF_IMEI],
+                        CONF_ACCOUNT_ID: user_input[CONF_ACCOUNT_ID],
                         CONF_AUTH_CODE: user_input[CONF_AUTH_CODE],
-                        CONF_TRACKING_CODE: user_input[CONF_TRACKING_CODE],
                         CONF_DEVICE_NAME: name,
                     },
                 )
@@ -91,9 +87,7 @@ class SolidGPSConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
-    async def async_step_reauth(
-        self, entry_data: dict[str, Any]
-    ) -> ConfigFlowResult:
+    async def async_step_reauth(self, entry_data: dict[str, Any]) -> ConfigFlowResult:
         """Handle reauth when credentials expire."""
         return await self.async_step_reauth_confirm()
 
@@ -109,8 +103,8 @@ class SolidGPSConfigFlow(ConfigFlow, domain=DOMAIN):
             client = SolidGPSApiClient(
                 session=session,
                 imei=reauth_entry.data[CONF_IMEI],
+                account_id=reauth_entry.data[CONF_ACCOUNT_ID],
                 auth_code=user_input[CONF_AUTH_CODE],
-                tracking_code=user_input[CONF_TRACKING_CODE],
             )
 
             try:
@@ -127,7 +121,6 @@ class SolidGPSConfigFlow(ConfigFlow, domain=DOMAIN):
                     reauth_entry,
                     data_updates={
                         CONF_AUTH_CODE: user_input[CONF_AUTH_CODE],
-                        CONF_TRACKING_CODE: user_input[CONF_TRACKING_CODE],
                     },
                 )
 

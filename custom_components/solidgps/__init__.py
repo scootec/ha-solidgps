@@ -10,12 +10,12 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import SolidGPSApiClient
-from .const import CONF_AUTH_CODE, CONF_IMEI, CONF_TRACKING_CODE, DOMAIN
+from .const import CONF_ACCOUNT_ID, CONF_AUTH_CODE, CONF_IMEI, DOMAIN
 from .coordinator import SolidGPSCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = [Platform.DEVICE_TRACKER]
+PLATFORMS = [Platform.BINARY_SENSOR, Platform.DEVICE_TRACKER, Platform.SENSOR]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -24,8 +24,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     api_client = SolidGPSApiClient(
         session=session,
         imei=entry.data[CONF_IMEI],
+        account_id=entry.data[CONF_ACCOUNT_ID],
         auth_code=entry.data[CONF_AUTH_CODE],
-        tracking_code=entry.data[CONF_TRACKING_CODE],
     )
 
     coordinator = SolidGPSCoordinator(hass, entry, api_client)

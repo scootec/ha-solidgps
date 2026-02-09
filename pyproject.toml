@@ -1,0 +1,32 @@
+[project]
+name = "ha-solidgps"
+version = "1.0.0"
+description = "Home Assistant custom component for SolidGPS vehicle trackers"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.12"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "B",      # flake8-bugbear
+    "E",      # pycodestyle errors
+    "F",      # pyflakes
+    "I",      # isort
+    "N",      # pep8-naming
+    "UP",     # pyupgrade
+    "W",      # pycodestyle warnings
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["custom_components.solidgps"]
+
+[dependency-groups]
+dev = [
+    "homeassistant-stubs>=2024.12.5",
+    "mypy>=1.19.1",
+    "ruff>=0.15.0",
+]

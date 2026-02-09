@@ -15,12 +15,15 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set manifest version number
+        env:
+          VERSION: ${{ github.ref_name }}
         run: |
           python3 -c "
-          import json
+          import json, os
+          version = os.environ['VERSION'].lstrip('v')
           with open('custom_components/solidgps/manifest.json', 'r') as f:
               manifest = json.load(f)
-          manifest['version'] = '${GITHUB_REF_NAME}'.lstrip('v')
+          manifest['version'] = version
           with open('custom_components/solidgps/manifest.json', 'w') as f:
               json.dump(manifest, f, indent=2)
               f.write('\n')
@@ -29,7 +32,7 @@ jobs:
       - name: Create zip
         run: |
           cd custom_components/solidgps
-          zip solidgps.zip -r ./
+          zip solidgps.zip -r ./ --exclude='*__pycache__*'
 
       - name: Upload zip to release
         uses: svenstaro/upload-release-action@v2

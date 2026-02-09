@@ -8,7 +8,7 @@ from typing import Any
 
 import aiohttp
 
-from .const import API_TIMEOUT, API_URL, DEFAULT_ACCOUNT_ID
+from .const import API_TIMEOUT, API_URL
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -34,61 +34,49 @@ class SolidGPSApiClient:
         self,
         session: aiohttp.ClientSession,
         imei: str,
+        account_id: str,
         auth_code: str,
-        tracking_code: str,
     ) -> None:
         """Initialize the API client."""
         self._session = session
         self._imei = imei
+        self._account_id = account_id
         self._auth_code = auth_code
-        self._tracking_code = tracking_code
 
     async def async_get_data(self) -> dict[str, Any]:
         """Fetch data from the SolidGPS API."""
         params = {
             "IMEI": self._imei,
-            "account_id": DEFAULT_ACCOUNT_ID,
+            "account_id": self._account_id,
             "auth_code": self._auth_code,
-            "tracking_code": self._tracking_code,
+            "tracking_code": "",
             "startEpoch": "",
             "endEpoch": "",
         }
 
         try:
             async with asyncio.timeout(API_TIMEOUT):
-                resp = await self._session.get(
-                    API_URL, params=params, headers=REQUIRED_HEADERS
-                )
-        except (aiohttp.ClientError, asyncio.TimeoutError) as err:
-            raise SolidGPSApiError(
-                f"Error communicating with SolidGPS API: {err}"
-            ) from err
+                resp = await self._session.get(API_URL, params=params, headers=REQUIRED_HEADERS)
+        except (TimeoutError, aiohttp.ClientError) as err:
+            raise SolidGPSApiError(f"Error communicating with SolidGPS API: {err}") from err
 
         if resp.status != 200:
-            raise SolidGPSApiError(
-                f"SolidGPS API returned HTTP {resp.status}"
-            )
+            raise SolidGPSApiError(f"SolidGPS API returned HTTP {resp.status}")
 
         try:
             data = await resp.json(content_type=None)
         except (ValueError, aiohttp.ContentTypeError) as err:
-            raise SolidGPSApiError(
-                f"Invalid JSON from SolidGPS API: {err}"
-            ) from err
+            raise SolidGPSApiError(f"Invalid JSON from SolidGPS API: {err}") from err
 
         if not data:
-            raise SolidGPSApiError(
-                "SolidGPS API returned empty response"
-            )
+            raise SolidGPSApiError("SolidGPS API returned empty response")
 
         api_status = data.get("status")
         if api_status == 401:
             raise SolidGPSAuthError("Authentication failed (status 401)")
 
         if api_status != 200:
-            raise SolidGPSApiError(
-                f"SolidGPS API returned status {api_status}"
-            )
+            raise SolidGPSApiError(f"SolidGPS API returned status {api_status}")
 
         return data
 
@@ -98,9 +86,7 @@ class SolidGPSApiClient:
         return True
 
 
-def extract_location_data(
-    api_response: dict[str, Any], imei: str
-) -> dict[str, Any] | None:
+def extract_location_data(api_response: dict[str, Any], imei: str) -> dict[str, Any] | None:
     """Extract the latest location from an API response.
 
     Returns a flat dict with location data, or None if no data is available.
@@ -136,10 +122,30 @@ def extract_location_data(
         _LOGGER.warning("Failed to parse coordinates for IMEI %s: %s", imei, err)
         return None
 
-    speed = entry.get("sog")
+    speed: float | None = None
+    raw_speed = entry.get("sog")
+    if raw_speed is not None:
+        try:
+            speed = float(raw_speed)
+        except (ValueError, TypeError):
+            _LOGGER.debug("Failed to parse speed for IMEI %s: %s", imei, raw_speed)
+
+    course: float | None = None
     cog = entry.get("cog")
-    course = None if cog in ("-", None) else cog
-    utc = entry.get("UTC")
+    if cog not in ("-", None, ""):
+        try:
+            course = float(cog)
+        except (ValueError, TypeError):
+            _LOGGER.debug("Failed to parse course for IMEI %s: %s", imei, cog)
+
+    utc: int | None = None
+    raw_utc = entry.get("UTC")
+    if raw_utc is not None:
+        try:
+            utc = int(raw_utc)
+        except (ValueError, TypeError):
+            _LOGGER.debug("Failed to parse UTC for IMEI %s: %s", imei, raw_utc)
+
     quality = entry.get("quality")
 
     return {
