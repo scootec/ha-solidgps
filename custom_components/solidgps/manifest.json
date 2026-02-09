@@ -3,11 +3,11 @@
   "name": "SolidGPS",
   "codeowners": ["@scootec"],
   "config_flow": true,
+  "dependencies": [],
   "documentation": "https://github.com/scootec/ha-solidgps",
   "integration_type": "hub",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/scootec/ha-solidgps/issues",
   "requirements": [],
-  "dependencies": [],
   "version": "1.1.1"
 }
