@@ -7,8 +7,7 @@
   "integration_type": "hub",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/scootec/ha-solidgps/issues",
-  "homeassistant": "2024.11.0",
   "requirements": [],
   "dependencies": [],
-  "version": "1.1.0"
+  "version": "1.1.1"
 }
