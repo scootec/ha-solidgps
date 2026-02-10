@@ -218,17 +218,31 @@ class SolidGPSAuthenticator:
 
     async def _submit_login(self, session: aiohttp.ClientSession, nonce: str) -> None:
         """Submit AJAX login with credentials."""
-        url = f"{LOGIN_AJAX_URL}?action=user_registration_ajax_login_submit&security={nonce}"
-        form_data = aiohttp.FormData()
-        form_data.add_field("username", self._email)
-        form_data.add_field("password", self._password)
-        form_data.add_field("redirect", "/dashboard/")
-
+        payload = {
+            "action": "user_registration_ajax_login_submit",
+            "security": nonce,
+            "username": self._email,
+            "password": self._password,
+            "redirect": "/dashboard/",
+        }
         headers = {"X-Requested-With": "XMLHttpRequest"}
 
         async with asyncio.timeout(LOGIN_TIMEOUT):
-            resp = await session.post(url, data=form_data, headers=headers)
-            result = await resp.json(content_type=None)
+            resp = await session.post(LOGIN_AJAX_URL, data=payload, headers=headers)
+            body = await resp.text()
+
+        if not body:
+            raise SolidGPSLoginError(
+                f"Login returned empty response (HTTP {resp.status})"
+            )
+
+        try:
+            result = json.loads(body)
+        except json.JSONDecodeError as err:
+            _LOGGER.debug("Login response body: %s", body[:500])
+            raise SolidGPSLoginError(
+                f"Login returned non-JSON response (HTTP {resp.status})"
+            ) from err
 
         if not result.get("success"):
             msg = "Login failed"
