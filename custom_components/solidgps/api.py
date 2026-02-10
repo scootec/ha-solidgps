@@ -3,12 +3,21 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import re
 from typing import Any
 
 import aiohttp
 
-from .const import API_TIMEOUT, API_URL
+from .const import (
+    API_TIMEOUT,
+    API_URL,
+    DASHBOARD_URL,
+    LOGIN_AJAX_URL,
+    LOGIN_PAGE_URL,
+    LOGIN_TIMEOUT,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -25,6 +34,10 @@ class SolidGPSApiError(Exception):
 
 class SolidGPSAuthError(SolidGPSApiError):
     """Authentication error."""
+
+
+class SolidGPSLoginError(SolidGPSApiError):
+    """Login flow error (transient/network)."""
 
 
 class SolidGPSApiClient:
@@ -79,6 +92,11 @@ class SolidGPSApiClient:
             raise SolidGPSApiError(f"SolidGPS API returned status {api_status}")
 
         return data
+
+    def update_credentials(self, account_id: str, auth_code: str) -> None:
+        """Update stored credentials after re-login."""
+        self._account_id = account_id
+        self._auth_code = auth_code
 
     async def async_validate_credentials(self) -> bool:
         """Validate credentials by making a test API call."""
@@ -157,3 +175,135 @@ def extract_location_data(api_response: dict[str, Any], imei: str) -> dict[str, 
         "quality": quality,
         "source": source,
     }
+
+
+class SolidGPSAuthenticator:
+    """Handle WordPress login flow to obtain fresh auth credentials."""
+
+    def __init__(self, email: str, password: str) -> None:
+        """Initialize the authenticator."""
+        self._email = email
+        self._password = password
+
+    async def async_login(self) -> dict[str, Any]:
+        """Perform login and return credentials and device info.
+
+        Returns dict with keys: account_id, auth_code, devices.
+        devices is a dict of {imei: {Nickname, DeviceType, ...}}.
+
+        Raises SolidGPSAuthError for bad credentials.
+        Raises SolidGPSLoginError for transient/network errors.
+        """
+        jar = aiohttp.CookieJar()
+        try:
+            async with aiohttp.ClientSession(cookie_jar=jar) as session:
+                nonce = await self._get_login_nonce(session)
+                await self._submit_login(session, nonce)
+                return await self._extract_dashboard_data(session)
+        except (SolidGPSAuthError, SolidGPSLoginError):
+            raise
+        except (TimeoutError, aiohttp.ClientError) as err:
+            raise SolidGPSLoginError(
+                f"Network error during login: {err}"
+            ) from err
+
+    async def _get_login_nonce(self, session: aiohttp.ClientSession) -> str:
+        """Fetch the login page and extract the nonce."""
+        async with asyncio.timeout(LOGIN_TIMEOUT):
+            resp = await session.get(LOGIN_PAGE_URL)
+            html = await resp.text()
+
+        match = re.search(
+            r'"ur_login_form_save_nonce"\s*:\s*"([a-f0-9]+)"', html
+        )
+        if not match:
+            raise SolidGPSLoginError("Could not find login nonce in page")
+        return match.group(1)
+
+    async def _submit_login(
+        self, session: aiohttp.ClientSession, nonce: str
+    ) -> None:
+        """Submit AJAX login with credentials."""
+        url = f"{LOGIN_AJAX_URL}?action=user_registration_ajax_login_submit&security={nonce}"
+        form_data = aiohttp.FormData()
+        form_data.add_field("username", self._email)
+        form_data.add_field("password", self._password)
+        form_data.add_field("redirect", "/dashboard/")
+
+        async with asyncio.timeout(LOGIN_TIMEOUT):
+            resp = await session.post(url, data=form_data)
+            result = await resp.json(content_type=None)
+
+        if not result.get("success"):
+            msg = "Login failed"
+            data = result.get("data", {})
+            if isinstance(data, dict):
+                msg = data.get("message", msg)
+            elif isinstance(data, str):
+                # Strip HTML tags from error message
+                msg = re.sub(r"<[^>]+>", "", data)
+            raise SolidGPSAuthError(msg)
+
+    async def _extract_dashboard_data(
+        self, session: aiohttp.ClientSession
+    ) -> dict[str, Any]:
+        """Fetch dashboard and extract account_info and device_info."""
+        async with asyncio.timeout(LOGIN_TIMEOUT):
+            resp = await session.get(DASHBOARD_URL)
+            html = await resp.text()
+
+        account_info = self._parse_js_object(html, "account_info")
+        if not account_info:
+            raise SolidGPSLoginError(
+                "Could not extract account_info from dashboard"
+            )
+
+        device_info = self._parse_js_object(html, "device_info")
+        if not device_info:
+            raise SolidGPSLoginError(
+                "Could not extract device_info from dashboard"
+            )
+
+        account_id = account_info.get("AccountID")
+        auth_code = account_info.get("AuthCode")
+        if not account_id or not auth_code:
+            raise SolidGPSLoginError(
+                "Missing AccountID or AuthCode in account_info"
+            )
+
+        return {
+            "account_id": str(account_id),
+            "auth_code": str(auth_code),
+            "devices": device_info,
+        }
+
+    @staticmethod
+    def _parse_js_object(html: str, var_name: str) -> dict[str, Any] | None:
+        """Extract a JavaScript object assignment from HTML.
+
+        Matches patterns like: var account_info = {...};
+        Uses brace counting to handle nested objects.
+        """
+        pattern = rf"var\s+{re.escape(var_name)}\s*=\s*\{{"
+        match = re.search(pattern, html)
+        if not match:
+            return None
+
+        start = match.end() - 1  # include the opening brace
+        depth = 0
+        for i in range(start, len(html)):
+            if html[i] == "{":
+                depth += 1
+            elif html[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    json_str = html[start : i + 1]
+                    try:
+                        return json.loads(json_str)
+                    except json.JSONDecodeError:
+                        _LOGGER.debug(
+                            "Failed to parse %s JSON from dashboard",
+                            var_name,
+                        )
+                        return None
+        return None

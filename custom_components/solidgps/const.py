@@ -7,10 +7,17 @@ DOMAIN = "solidgps"
 API_URL = "https://www.solidgps.com/custom/dashboardConfig/dashboard.9/request.php"
 API_TIMEOUT = 30
 
+LOGIN_PAGE_URL = "https://www.solidgps.com/login/"
+LOGIN_AJAX_URL = "https://www.solidgps.com/wp-admin/admin-ajax.php"
+DASHBOARD_URL = "https://www.solidgps.com/dashboard/"
+LOGIN_TIMEOUT = 30
+
 CONF_IMEI = "imei"
 CONF_ACCOUNT_ID = "account_id"
 CONF_AUTH_CODE = "auth_code"
 CONF_DEVICE_NAME = "device_name"
+CONF_EMAIL = "email"
+CONF_PASSWORD = "password"
 
 UPDATE_INTERVAL = timedelta(minutes=5)
 

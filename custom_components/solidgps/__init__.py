@@ -18,6 +18,21 @@ _LOGGER = logging.getLogger(__name__)
 PLATFORMS = [Platform.BINARY_SENSOR, Platform.DEVICE_TRACKER, Platform.SENSOR]
 
 
+async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
+    """Migrate old config entries to new version."""
+    if config_entry.version < 2:
+        _LOGGER.debug(
+            "Migrating SolidGPS config entry from version %s to 2",
+            config_entry.version,
+        )
+        hass.config_entries.async_update_entry(config_entry, version=2)
+        _LOGGER.info(
+            "SolidGPS config entry migrated to version 2. "
+            "Re-authentication will be required when auth_code expires."
+        )
+    return True
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up SolidGPS from a config entry."""
     session = async_get_clientsession(hass)

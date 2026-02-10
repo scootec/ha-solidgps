@@ -7,14 +7,19 @@ from typing import Any
 
 import voluptuous as vol
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .api import SolidGPSApiClient, SolidGPSApiError, SolidGPSAuthError
+from .api import (
+    SolidGPSAuthenticator,
+    SolidGPSAuthError,
+    SolidGPSLoginError,
+)
 from .const import (
     CONF_ACCOUNT_ID,
     CONF_AUTH_CODE,
     CONF_DEVICE_NAME,
+    CONF_EMAIL,
     CONF_IMEI,
+    CONF_PASSWORD,
     DOMAIN,
 )
 
@@ -22,16 +27,15 @@ _LOGGER = logging.getLogger(__name__)
 
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
-        vol.Required(CONF_IMEI): str,
-        vol.Required(CONF_ACCOUNT_ID): str,
-        vol.Required(CONF_AUTH_CODE): str,
-        vol.Optional(CONF_DEVICE_NAME, default=""): str,
+        vol.Required(CONF_EMAIL): str,
+        vol.Required(CONF_PASSWORD): str,
     }
 )
 
 STEP_REAUTH_DATA_SCHEMA = vol.Schema(
     {
-        vol.Required(CONF_AUTH_CODE): str,
+        vol.Required(CONF_EMAIL): str,
+        vol.Required(CONF_PASSWORD): str,
     }
 )
 
@@ -39,47 +43,45 @@ STEP_REAUTH_DATA_SCHEMA = vol.Schema(
 class SolidGPSConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for SolidGPS."""
 
-    VERSION = 1
+    VERSION = 2
 
-    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        """Handle the initial step."""
+    def __init__(self) -> None:
+        """Initialize the config flow."""
+        self._login_data: dict[str, Any] | None = None
+
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle step 1: email and password."""
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            await self.async_set_unique_id(user_input[CONF_IMEI])
-            self._abort_if_unique_id_configured()
-
-            session = async_get_clientsession(self.hass)
-            client = SolidGPSApiClient(
-                session=session,
-                imei=user_input[CONF_IMEI],
-                account_id=user_input[CONF_ACCOUNT_ID],
-                auth_code=user_input[CONF_AUTH_CODE],
-            )
+            email = user_input[CONF_EMAIL]
+            password = user_input[CONF_PASSWORD]
 
             try:
-                await client.async_validate_credentials()
+                authenticator = SolidGPSAuthenticator(email, password)
+                login_data = await authenticator.async_login()
             except SolidGPSAuthError:
                 errors["base"] = "invalid_auth"
-            except SolidGPSApiError:
+            except SolidGPSLoginError:
                 errors["base"] = "cannot_connect"
             except Exception:  # noqa: BLE001
-                _LOGGER.exception("Unexpected exception during setup")
+                _LOGGER.exception("Unexpected exception during login")
                 errors["base"] = "unknown"
             else:
-                name = (user_input.get(CONF_DEVICE_NAME) or "").strip()
-                if not name:
-                    name = f"SolidGPS {user_input[CONF_IMEI][-4:]}"
+                self._login_data = {
+                    **login_data,
+                    CONF_EMAIL: email,
+                    CONF_PASSWORD: password,
+                }
 
-                return self.async_create_entry(
-                    title=name,
-                    data={
-                        CONF_IMEI: user_input[CONF_IMEI],
-                        CONF_ACCOUNT_ID: user_input[CONF_ACCOUNT_ID],
-                        CONF_AUTH_CODE: user_input[CONF_AUTH_CODE],
-                        CONF_DEVICE_NAME: name,
-                    },
-                )
+                devices = login_data.get("devices", {})
+                if len(devices) == 1:
+                    imei = next(iter(devices))
+                    return await self._create_device_entry(imei)
+
+                return await self.async_step_select_device()
 
         return self.async_show_form(
             step_id="user",
@@ -87,42 +89,102 @@ class SolidGPSConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
-    async def async_step_reauth(self, entry_data: dict[str, Any]) -> ConfigFlowResult:
+    async def async_step_select_device(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle step 2: device selection."""
+        assert self._login_data is not None
+
+        if user_input is not None:
+            return await self._create_device_entry(user_input[CONF_IMEI])
+
+        devices = self._login_data.get("devices", {})
+        device_options = {}
+        for imei, info in devices.items():
+            nickname = info.get("Nickname", "").strip() if isinstance(info, dict) else ""
+            label = f"{nickname} ({imei})" if nickname else imei
+            device_options[imei] = label
+
+        schema = vol.Schema(
+            {
+                vol.Required(CONF_IMEI): vol.In(device_options),
+            }
+        )
+
+        return self.async_show_form(
+            step_id="select_device",
+            data_schema=schema,
+        )
+
+    async def _create_device_entry(self, imei: str) -> ConfigFlowResult:
+        """Create a config entry for a selected device."""
+        assert self._login_data is not None
+
+        await self.async_set_unique_id(imei)
+        self._abort_if_unique_id_configured()
+
+        devices = self._login_data.get("devices", {})
+        device_info = devices.get(imei, {})
+        nickname = ""
+        if isinstance(device_info, dict):
+            nickname = device_info.get("Nickname", "").strip()
+        name = nickname if nickname else f"SolidGPS {imei[-4:]}"
+
+        return self.async_create_entry(
+            title=name,
+            data={
+                CONF_EMAIL: self._login_data[CONF_EMAIL],
+                CONF_PASSWORD: self._login_data[CONF_PASSWORD],
+                CONF_IMEI: imei,
+                CONF_ACCOUNT_ID: self._login_data["account_id"],
+                CONF_AUTH_CODE: self._login_data["auth_code"],
+                CONF_DEVICE_NAME: name,
+            },
+        )
+
+    async def async_step_reauth(
+        self, entry_data: dict[str, Any]
+    ) -> ConfigFlowResult:
         """Handle reauth when credentials expire."""
         return await self.async_step_reauth_confirm()
 
     async def async_step_reauth_confirm(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Handle reauth confirmation."""
+        """Handle reauth confirmation with email and password."""
         errors: dict[str, str] = {}
 
         if user_input is not None:
             reauth_entry = self._get_reauth_entry()
-            session = async_get_clientsession(self.hass)
-            client = SolidGPSApiClient(
-                session=session,
-                imei=reauth_entry.data[CONF_IMEI],
-                account_id=reauth_entry.data[CONF_ACCOUNT_ID],
-                auth_code=user_input[CONF_AUTH_CODE],
-            )
+            email = user_input[CONF_EMAIL]
+            password = user_input[CONF_PASSWORD]
 
             try:
-                await client.async_validate_credentials()
+                authenticator = SolidGPSAuthenticator(email, password)
+                login_data = await authenticator.async_login()
             except SolidGPSAuthError:
                 errors["base"] = "invalid_auth"
-            except SolidGPSApiError:
+            except SolidGPSLoginError:
                 errors["base"] = "cannot_connect"
             except Exception:  # noqa: BLE001
                 _LOGGER.exception("Unexpected exception during reauth")
                 errors["base"] = "unknown"
             else:
-                return self.async_update_reload_and_abort(
-                    reauth_entry,
-                    data_updates={
-                        CONF_AUTH_CODE: user_input[CONF_AUTH_CODE],
-                    },
-                )
+                # Validate that the IMEI from this entry exists in the account
+                imei = reauth_entry.data[CONF_IMEI]
+                devices = login_data.get("devices", {})
+                if imei not in devices:
+                    errors["base"] = "device_not_found"
+                else:
+                    return self.async_update_reload_and_abort(
+                        reauth_entry,
+                        data_updates={
+                            CONF_EMAIL: email,
+                            CONF_PASSWORD: password,
+                            CONF_ACCOUNT_ID: login_data["account_id"],
+                            CONF_AUTH_CODE: login_data["auth_code"],
+                        },
+                    )
 
         return self.async_show_form(
             step_id="reauth_confirm",
