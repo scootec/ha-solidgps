@@ -49,9 +49,7 @@ class SolidGPSConfigFlow(ConfigFlow, domain=DOMAIN):
         """Initialize the config flow."""
         self._login_data: dict[str, Any] | None = None
 
-    async def async_step_user(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
+    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Handle step 1: email and password."""
         errors: dict[str, str] = {}
 
@@ -142,9 +140,7 @@ class SolidGPSConfigFlow(ConfigFlow, domain=DOMAIN):
             },
         )
 
-    async def async_step_reauth(
-        self, entry_data: dict[str, Any]
-    ) -> ConfigFlowResult:
+    async def async_step_reauth(self, entry_data: dict[str, Any]) -> ConfigFlowResult:
         """Handle reauth when credentials expire."""
         return await self.async_step_reauth_confirm()
 

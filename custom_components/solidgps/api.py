@@ -203,9 +203,7 @@ class SolidGPSAuthenticator:
         except (SolidGPSAuthError, SolidGPSLoginError):
             raise
         except (TimeoutError, aiohttp.ClientError) as err:
-            raise SolidGPSLoginError(
-                f"Network error during login: {err}"
-            ) from err
+            raise SolidGPSLoginError(f"Network error during login: {err}") from err
 
     async def _get_login_nonce(self, session: aiohttp.ClientSession) -> str:
         """Fetch the login page and extract the nonce."""
@@ -213,16 +211,12 @@ class SolidGPSAuthenticator:
             resp = await session.get(LOGIN_PAGE_URL)
             html = await resp.text()
 
-        match = re.search(
-            r'"ur_login_form_save_nonce"\s*:\s*"([a-f0-9]+)"', html
-        )
+        match = re.search(r'"ur_login_form_save_nonce"\s*:\s*"([a-f0-9]+)"', html)
         if not match:
             raise SolidGPSLoginError("Could not find login nonce in page")
         return match.group(1)
 
-    async def _submit_login(
-        self, session: aiohttp.ClientSession, nonce: str
-    ) -> None:
+    async def _submit_login(self, session: aiohttp.ClientSession, nonce: str) -> None:
         """Submit AJAX login with credentials."""
         url = f"{LOGIN_AJAX_URL}?action=user_registration_ajax_login_submit&security={nonce}"
         form_data = aiohttp.FormData()
@@ -244,9 +238,7 @@ class SolidGPSAuthenticator:
                 msg = re.sub(r"<[^>]+>", "", data)
             raise SolidGPSAuthError(msg)
 
-    async def _extract_dashboard_data(
-        self, session: aiohttp.ClientSession
-    ) -> dict[str, Any]:
+    async def _extract_dashboard_data(self, session: aiohttp.ClientSession) -> dict[str, Any]:
         """Fetch dashboard and extract account_info and device_info."""
         async with asyncio.timeout(LOGIN_TIMEOUT):
             resp = await session.get(DASHBOARD_URL)
@@ -254,22 +246,16 @@ class SolidGPSAuthenticator:
 
         account_info = self._parse_js_object(html, "account_info")
         if not account_info:
-            raise SolidGPSLoginError(
-                "Could not extract account_info from dashboard"
-            )
+            raise SolidGPSLoginError("Could not extract account_info from dashboard")
 
         device_info = self._parse_js_object(html, "device_info")
         if not device_info:
-            raise SolidGPSLoginError(
-                "Could not extract device_info from dashboard"
-            )
+            raise SolidGPSLoginError("Could not extract device_info from dashboard")
 
         account_id = account_info.get("AccountID")
         auth_code = account_info.get("AuthCode")
         if not account_id or not auth_code:
-            raise SolidGPSLoginError(
-                "Missing AccountID or AuthCode in account_info"
-            )
+            raise SolidGPSLoginError("Missing AccountID or AuthCode in account_info")
 
         return {
             "account_id": str(account_id),

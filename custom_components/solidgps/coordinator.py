@@ -108,13 +108,9 @@ class SolidGPSCoordinator(DataUpdateCoordinator[SolidGPSData]):
             authenticator = SolidGPSAuthenticator(email, password)
             login_data = await authenticator.async_login()
         except SolidGPSAuthError as err:
-            raise ConfigEntryAuthFailed(
-                f"SolidGPS re-login failed: {err}"
-            ) from err
+            raise ConfigEntryAuthFailed(f"SolidGPS re-login failed: {err}") from err
         except SolidGPSLoginError as err:
-            raise UpdateFailed(
-                f"SolidGPS login error (will retry): {err}"
-            ) from err
+            raise UpdateFailed(f"SolidGPS login error (will retry): {err}") from err
 
         new_account_id = login_data["account_id"]
         new_auth_code = login_data["auth_code"]
@@ -135,13 +131,9 @@ class SolidGPSCoordinator(DataUpdateCoordinator[SolidGPSData]):
         try:
             return await self.api_client.async_get_data()
         except SolidGPSAuthError as err:
-            raise ConfigEntryAuthFailed(
-                "SolidGPS authentication failed after re-login"
-            ) from err
+            raise ConfigEntryAuthFailed("SolidGPS authentication failed after re-login") from err
         except SolidGPSApiError as err:
-            raise UpdateFailed(
-                f"Error communicating with SolidGPS after re-login: {err}"
-            ) from err
+            raise UpdateFailed(f"Error communicating with SolidGPS after re-login: {err}") from err
 
     def _fire_motion_events(self, current_speed: float | None) -> None:
         """Fire motion started/stopped events on speed transitions."""
