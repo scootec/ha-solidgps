@@ -224,8 +224,10 @@ class SolidGPSAuthenticator:
         form_data.add_field("password", self._password)
         form_data.add_field("redirect", "/dashboard/")
 
+        headers = {"X-Requested-With": "XMLHttpRequest"}
+
         async with asyncio.timeout(LOGIN_TIMEOUT):
-            resp = await session.post(url, data=form_data)
+            resp = await session.post(url, data=form_data, headers=headers)
             result = await resp.json(content_type=None)
 
         if not result.get("success"):
